@@ -1,0 +1,359 @@
+---
+title: "Etude sur les invités - SGDF"
+author: "Thomas Vroylandt"
+date: "15 octobre 2018"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r chargement des donnees, message=FALSE, warning=FALSE, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(scales)
+library(paletteer)
+library(knitr)
+
+invit_data_wed <- readRDS("Data/Augmented/invit_data_wed.rds")
+#invit_data_unites <-  readRDS("Data/Augmented/invit_data_unites.rds")
+effectifs_tot <- readRDS("Data/Augmented/effectifs_tot.rds")
+```
+
+## Des invitations concentrées sur la période de la rentrée
+
+Les invités sont très nombreux en début d'année, du fait de la rentrée des groupes, et connaissaient ensuite un sursaut sur la fin d'année, au dernier trimestre, avant les camps, mais dans une proportion bien moindre.
+
+```{r repartition par annee, echo=FALSE, message=FALSE, warning=FALSE, fig.width=10}
+invit_data_wed %>%
+  filter(fonction_group == "Jeune" & 
+           (week_deb_invit < dmy("07-07-2018"))) %>%
+  group_by(week_deb_invit, annee) %>%
+  count() %>%
+  mutate(taille = case_when(annee == "2018" ~ "1",
+                            TRUE ~ "2")) %>%
+  ggplot(aes(x = week_deb_invit, y=n, color = annee, linetype = taille)) +
+  geom_smooth(size = 0.8, 
+              method = lm, 
+              formula = y ~ splines::bs(x, 20),
+              se = FALSE) +
+  scale_x_date(labels = date_format("%b"),
+               date_breaks = "1 month",
+               name = "Date de l'invitation") +
+  scale_linetype(guide = FALSE) +
+  scale_color_paletteer_d(nord, baie_mouton,
+                          name = "Année") +
+  scale_y_continuous(breaks = seq(0,2000,100),
+                     name = "Nombre d'invités") +
+  ggtitle("Nombre d'invités selon la date, par année")
+```
+
+## Davantage d'invités pour les plus jeunes
+
+Le premier constat est que la part d'invités par rapport à l'ensemble des inscrits dépend fortement de la branche. Elle est très importante pour les farfadets et les louveteaux-jeannettes et décroît fortement avec l'âge. Cela peut notamment s'expliquer par le fait que les entrées dans le scoutisme se font principalement aux âges les plus jeunes et qu'il s'agit par la suite davantage de renouvellement. Le statut invité permet alors ici de tester l'activité avant une inscription définitive.
+
+Il est aussi intéressant de remarquer que la part des chefs et responsable sous statut invité reste relativement stable selon les branches, ce qui montre bien l'attractivité et la capacité du mouvement à attirer, pour toutes les branches, des adultes en situation d'animation.
+
+```{r part des invites par branche et annee, echo=FALSE, message=FALSE, warning=FALSE, fig.width=10}
+invit_data_part <- invit_data_wed %>% 
+  group_by(annee, branche, fonction_group) %>%
+  count() %>%
+  right_join(effectifs_tot, by = c("annee", "branche", "fonction_group")) %>%
+  rename(n_invit = n.x,
+         n_tot = n.y)
+
+invit_data_part %>%
+  filter(annee == "2018") %>%
+  mutate(part_invit = (n_invit/n_tot)*100) %>%
+  ggplot(aes(x = branche, y = part_invit, fill = fonction_group)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("#0A2F84", "#00A89D", "#6971A4"),
+                    name = "Fonction") +
+  xlab("Branche") +
+  scale_y_continuous(breaks = seq(0,35,5),
+                     name = "Part des invités (en %)") +
+  ggtitle("Part des invités par branche en 2018")
+
+```
+
+La répartition dans l'année par branche suit la répartition globale de façon assez logique. Il n'y a pas de phénomène particulier à signaler sur ce point.
+
+```{r repartition dans l annee par branche, echo=FALSE, message=FALSE, warning=FALSE, fig.width=10}
+invit_data_wed %>%
+  filter(fonction_group == "Jeune" & 
+           (week_deb_invit < dmy("07-07-2018"))) %>%
+  group_by(annee, week_deb_invit, branche) %>%
+  summarise(count = n()) %>% 
+  mutate(perc = count/sum(count)) %>%
+  ggplot(aes(x = week_deb_invit, y=perc*100, color = branche)) +
+   geom_smooth(size = 0.8, 
+              method = lm, 
+              formula = y ~ splines::bs(x, 20),
+              se = FALSE) +
+  facet_grid(annee ~ .) +
+  scale_x_date(labels = date_format("%b"),
+               date_breaks = "1 month",
+               name = "Date de l'invitation") +
+  scale_color_manual(values = c("#72BA80", "#EE7F00", "#0069B2", "#C22E16", "#006D3E"),
+                    name = "") +
+  scale_y_continuous(breaks = seq(0,100,20),
+                     name = "Nombre d'invités") +
+  ggtitle("Part des invités par branche et par année")
+```
+
+## Des invités qui s'inscrivent davantage en début d'année
+
+Les invités s'inscrivent aussi davantage au début de l'année qu'à la fin. La part des invités qui s'inscrivent décroît ainsi nettement entre la période de la rentrée et le dernier trimestre. L'une des hypothèses explicatives est que ceux de début d'année s'inscrivent dans l'optique de participer à l'activité à l'année tandis que ceux de fin d'année qui ne souhaitent ou ne peuvent pas participer au camp ne s'inscrivent pas et soit le font à la rentrée suivante soit ne le font pas du tout.
+
+```{r taux d inscription par date, echo=FALSE, message=FALSE, warning=FALSE, fig.width=10}
+invit_data_wed %>%
+  filter(annee == "2018" & 
+           fonction_group == "Jeune" & 
+           (week_deb_invit < dmy("07-07-2018"))) %>%
+  ggplot(aes(x = week_deb_invit, fill = ind_inscr)) +
+  geom_bar(stat = "count") +
+  scale_x_date(labels = date_format("%b"),
+               date_breaks = "1 month",
+               name = "Date de l'invitation") +
+  scale_fill_manual(values = c("#0A2F84", "#00A89D"),
+                    name = "Inscription par la suite") +
+  scale_y_continuous(breaks = seq(0,2000,100),
+                     name = "Nombre d'invités") +
+  ggtitle("Taux d'inscription par date en 2018")
+
+invit_data_wed %>%
+  filter(fonction_group == "Jeune" & 
+           (week_deb_invit < dmy("07-07-2018"))) %>%
+  group_by(annee, week_deb_invit, ind_inscr) %>%
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count)) %>%
+  filter(ind_inscr == "Oui") %>%
+  ggplot(aes(x = week_deb_invit, y=perc*100, color = annee)) +
+  geom_smooth(size = 0.8, 
+              method = lm, 
+              formula = y ~ splines::bs(x, 20),
+              se = FALSE) +
+  scale_x_date(labels = date_format("%b"),
+               date_breaks = "1 month",
+               name = "Date de l'invitation") +
+  scale_color_paletteer_d(nord, lake_superior,
+                          name = "Année") +
+  scale_y_continuous(breaks = seq(0,100,10),
+                     name = "Part des invités (en %)") +
+  ggtitle("Part des invités qui s'inscrivent par la suite, par date")
+```
+
+## Taux d'inscription par branche
+
+Les taux d'inscriptions dépendent fortement des branches des jeunes. Ainsi, aux âges les plus jeunes, les invités s'inscrivent davantage que pour les plus âgés. Cela vaut pour l'ensemble de l'année, avec la même décroissance des taux d'inscription dans l'ensemble des branches (les volumes pour les compagnons ne sont pas assez élevés et on été enlevés).
+
+```{r taux d inscription par branche, echo=FALSE, message=FALSE, warning=FALSE}
+table_taux_insc_br <- invit_data_wed %>%
+  filter(fonction_group == "Jeune" & 
+           (week_deb_invit < dmy("07-07-2018"))) %>%
+  group_by(annee, branche, ind_inscr) %>%
+  summarise(count = n()) %>% 
+  mutate(perc = round((count/sum(count))*100,1)) %>%
+  filter(ind_inscr == "Oui") %>%
+  select(annee, branche, perc) %>%
+  spread(key = annee, value = perc)
+
+nom_col1<- c("", "2015", "2016", "2017", "2018")
+
+table_taux_insc_br %>%
+  kable(col.names = nom_col1)
+```
+
+```{r taux d inscription par branche 2, echo=FALSE, message=FALSE, warning=FALSE, fig.width=10}
+invit_data_wed %>%
+  filter(annee == "2018" & 
+           fonction_group == "Jeune" & 
+           (week_deb_invit < dmy("07-07-2018")) & 
+           branche != "Compagnon") %>%
+  group_by(week_deb_invit, branche, ind_inscr) %>%
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count)) %>%
+  filter(ind_inscr == "Oui") %>%
+  ggplot(aes(x = week_deb_invit, y=perc*100, color = branche)) +
+  geom_smooth(size = 0.8, 
+              method = lm, 
+              formula = y ~ splines::bs(x, 18),
+              se = FALSE) +
+  scale_x_date(labels = date_format("%b"),
+               date_breaks = "1 month",
+               name = "Date de l'invitation") +
+  scale_color_manual(values = c("#72BA80", "#EE7F00", "#0069B2", "#C22E16"),
+                    name = "")+
+  scale_y_continuous(breaks = seq(0,100,10),
+                     name = "Part des invités (en %)") +
+  ggtitle("Part des invités qui s'inscrivent par la suite, par date et branche, en 2018")
+```
+
+## Inscription des invités l'année suivante
+
+Taux d'inscription l'année suivante en fonction de la branche de l'invité : 
+
+```{r inscription_invites_an_suivant, echo=FALSE, message=FALSE, warning=FALSE, fig.width=10}
+# charger les donnees adhesion
+adh16 <- read_xlsx("Data/Origine/Adhérents pour une saison_2016.xlsx") %>%
+  select(`CODE ADHERENT`, SAISON) %>%
+  rename(code_adh = `CODE ADHERENT`,
+         annee_adh = SAISON) %>%
+  mutate(annee_adh = as.character(annee_adh-1),
+         ind_inscr_suiv = "1")
+
+adh17 <- read_xlsx("Data/Origine/Adhérents pour une saison_2017.xlsx") %>%
+  select(`CODE ADHERENT`, SAISON) %>%
+  rename(code_adh = `CODE ADHERENT`,
+         annee_adh = SAISON) %>%
+  mutate(annee_adh = as.character(annee_adh-1),
+         ind_inscr_suiv = "1")
+
+adh18 <- read_xlsx("Data/Origine/Adhérents pour une saison_2018.xlsx", sheet = "Adh_2018") %>%
+  select(`CODE ADHERENT`, SAISON) %>%
+  rename(code_adh = `CODE ADHERENT`,
+         annee_adh = SAISON) %>%
+  mutate(annee_adh = as.character(annee_adh-1),
+         ind_inscr_suiv = "1")
+
+adh_tot <- bind_rows(adh16, adh17, adh18)
+
+# croiser avec les donnees invites de l'annee precedente
+invit_data_an_suiv <- invit_data_wed %>%
+  filter(annee %in% c("2015", "2016", "2017")) %>%
+  left_join(adh_tot, by = c("code_adherent" = "code_adh", "annee" = "annee_adh")) %>%
+  mutate(ind_inscr_suiv = fct_explicit_na(ind_inscr_suiv, "0")) %>%
+  group_by(annee, branche, ind_inscr, ind_inscr_suiv) %>%
+  count()
+
+# graph
+invit_data_an_suiv %>%
+  group_by(annee, branche, ind_inscr_suiv) %>%
+  summarise(n = sum(n)) %>%
+  group_by(annee, branche) %>%
+  mutate(perc = round(n/sum(n)*100,1)) %>%
+  ggplot(aes(x = branche, y = perc, fill = annee)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("#72BA80", "#EE7F00", "#0069B2"),
+                    name = "") +
+  scale_x_discrete(name = "") + 
+  scale_y_continuous(breaks = seq(0,100,10),
+                     name = "Part des invités inscrits l'année suivante (en %)") +
+  ggtitle("Part des invités qui s'inscrivent l'année suivante")
+
+```
+
+Les invités qui s'inscrivent dans l'année sont moins nombreux à s'inscrire l'année suivante. C'est peut-être du au fait que ceux qui ne s'inscrivent pas dans l'année ont moins l'occasion de tester le scoutisme sur la durée et s'inscrivent l'année suivante.
+
+```{r inscription_invites_an_suivant_inscr, echo=FALSE, message=FALSE, warning=FALSE, fig.width=10}
+# graph
+invit_data_an_suiv %>%
+  group_by(annee, ind_inscr, ind_inscr_suiv) %>%
+  summarise(n = sum(n)) %>%
+  group_by(annee, ind_inscr) %>%
+  mutate(perc = round(n/sum(n)*100,1)) %>%
+  ggplot(aes(x = ind_inscr, y = perc, fill = annee)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("#72BA80", "#EE7F00", "#0069B2"),
+                    name = "") +
+  scale_x_discrete(name = "") + 
+  scale_y_continuous(breaks = seq(0,100,10),
+                     name = "Part des invités inscrits l'année suivante (en %)") +
+  ggtitle("Part des invités qui s'inscrivent l'année suivante en fonction de si ils s'inscrivent ou non dans l'année")
+
+```
+
+Un phénomène intéressant est que les jeunes qui arrivent plus tardivement dans l'année et ne s'inscrivent donc pas forcément s'inscrivent beaucoup l'année suivante : 
+
+```{r inscription_invites_an_suivant_date, echo=FALSE, message=FALSE, warning=FALSE, fig.width=10}
+invit_data_wed %>%
+  filter(annee %in% c("2015", "2016", "2017")) %>%
+  left_join(adh_tot, by = c("code_adherent" = "code_adh", "annee" = "annee_adh")) %>%
+  mutate(ind_inscr_suiv = fct_explicit_na(ind_inscr_suiv, "0"),
+         ind_inscr_suiv = fct_recode(ind_inscr_suiv,
+                                     "Non" = "0",
+                                     "Oui" = "1")) %>%
+  filter(annee == "2017" & 
+           fonction_group == "Jeune" & 
+           (week_deb_invit < dmy("07-07-2018"))) %>%
+  ggplot(aes(x = week_deb_invit, fill = ind_inscr_suiv)) +
+  geom_bar(stat = "count") +
+  scale_x_date(labels = date_format("%b"),
+               date_breaks = "1 month",
+               name = "Date de l'invitation") +
+  scale_fill_manual(values = c("#0A2F84", "#00A89D"),
+                    name = "Inscription l'année suivante") +
+  scale_y_continuous(breaks = seq(0,2000,100),
+                     name = "Nombre d'invités") +
+  ggtitle("Taux d'inscription l'année suivante par date en 2017")
+```
+
+## Quel impact pour les week-ends découverte ?
+```{r calcul part invit wed, message=FALSE, warning=FALSE, include=FALSE}
+part_wed_annee <- invit_data_wed %>%
+  filter(annee == "2018" & 
+           fonction_group == "Jeune" & 
+           (week_deb_invit < dmy("07-07-2018"))) %>%
+  group_by(ind_invit_wed2) %>%
+  summarise(count = n()) %>% 
+  mutate(perc = round(count/sum(count)*100,1)) %>%
+  filter(ind_invit_wed2 == "Week-end découverte") %>%
+  ungroup() %>%
+  select(perc)
+
+part_wed_trim3 <- invit_data_wed %>%
+  filter(annee == "2018" & 
+           fonction_group == "Jeune" & 
+           (week_deb_invit < dmy("07-07-2018"))) %>%
+  group_by(trim_deb_invit, ind_invit_wed2) %>%
+  summarise(count = n()) %>% 
+  mutate(perc = round(count/sum(count)*100,1)) %>%
+  filter(trim_deb_invit == "Avril - juin" &
+           ind_invit_wed2 == "Week-end découverte") %>%
+  ungroup() %>%
+  select(perc)
+```
+
+Le nombre d'invitations qu'il est possible de relier à des week-ends découverte (voir encadré méthodologique) reste relativement peu important au regard du nombre global d'invitation (autour de `r part_wed_annee` % en 2018). Celles-ci sont très concentrées sur le trimestre avril - juin et représentent, pour cette période, `r part_wed_trim3` % des invitations.
+
+```{r invitations reliees aux WED, echo=FALSE, message=FALSE, warning=FALSE, fig.width=10}
+invit_data_wed %>%
+  filter(annee == "2018" & 
+           fonction_group == "Jeune" & 
+           (week_deb_invit < dmy("07-07-2018"))) %>%
+  ggplot(aes(x = week_deb_invit, fill = ind_invit_wed2)) +
+  geom_bar(stat = "count") +
+  scale_x_date(labels = date_format("%b"),
+               date_breaks = "1 month") +
+  scale_fill_manual(values = c("#0A2F84", "#00A89D", "#72BA80"),
+                    name = "") +
+  xlab("Date de l'invitation") +
+  ylab("Nombre d'invités") +
+  ggtitle("Invitations reliées aux week-end découvertes en 2018")
+```
+
+```{r calcul part inscr wed, message=FALSE, warning=FALSE, include=FALSE}
+part_inscr_wed_trim3 <- invit_data_wed %>%
+  filter(annee == "2018" & 
+           fonction_group == "Jeune" & 
+           (week_deb_invit < dmy("07-07-2018"))) %>%
+  group_by(trim_deb_invit, ind_invit_wed2, ind_inscr) %>%
+  summarise(count=n()) %>% 
+  mutate(perc = round(count/sum(count)*100,1)) %>%
+  filter(trim_deb_invit == "Avril - juin" &
+         ind_inscr == "Oui") %>%
+  ungroup() %>%
+  select(ind_invit_wed2, perc)
+```
+
+Toutefois, les invités aux week-ends découverte semblent s'inscrire moins que les autres invités, à période équivalente. Pour le trimestre avril - juin 2018, `r part_inscr_wed_trim3 %>% filter(ind_invit_wed2 != "Week-end découverte") %>% select(perc)` % de ceux ayant été invités sans avoir participé à un week-end découverte se sont inscrits tandis que ce n'est le cas que de `r part_inscr_wed_trim3 %>% filter(ind_invit_wed2 == "Week-end découverte") %>% select(perc)` % de ceux y ayant participé.
+
+La raison tient probablement aux profils différents des individus ayant participé à un week-end découverte par rapport à ceux qui n'y participent pas. Toutefois il faudrait des données individuelles plus fines pour analyser une telle question.
+
+> ### Construction de l'indicateur d'inscription
++ si la date de fin d'inscription est le 31 août, l'individu est considéré comme s'étant inscrit ;
++ sinon il n'est pas considéré comme étant inscrit.
+
+> ### Construction de l'indicateur d'invitation reliée au week-end découverte
++ si la date de fin d'invitation est comprise dans un intervalle d'un mois avant/un mois après la date de début du week-end découverte, l'invitation est considérée comme étant reliée à celui-ci ;
++ sinon elle ne l'est pas.
